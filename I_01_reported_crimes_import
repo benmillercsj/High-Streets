@@ -1,0 +1,57 @@
+# Clear global environment
+
+rm(list = ls())
+
+# Load packages and set working directories
+
+library(ggplot2)
+library(stringr)
+library(readr)
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(janitor)
+library(dataCompareR)
+library(grid)
+library(sf)
+library(ggbreak)
+library(glue)
+library(purrr)
+library(openxlsx)
+library(scales)
+library(ggbeeswarm)
+library(shiny)
+library(ggplot2)
+library(DT) 
+library(rsconnect)
+library(scales)
+
+# Load in functions
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/repos/high_streets/functions")
+source("theme_csj.R")
+
+'%!in%' = Negate("%in%")
+pound_format <- label_number(prefix = "£", big.mark = ",", accuracy = 1)
+
+# Set wd and paths
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data")
+import_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/import/"
+export_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/export/"
+datasets_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/datasets/"
+
+# Import
+
+files_list <- tibble(file = list.files(str_c(import_path, "data_police_uk"), recursive = T))
+
+import_function <- function(file) {
+  
+  import <- read_csv(str_c(import_path, "data_police_uk/", file))
+  
+}
+
+stacked_import <- pmap_dfr(files_list, import_function) %>% 
+  clean_names()
+
+saveRDS(stacked_import %>% clean_names(), str_c(datasets_path, "england_street_crimes_import.rds"))
