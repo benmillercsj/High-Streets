@@ -1,0 +1,91 @@
+# Clear global environment
+
+rm(list = ls())
+
+# Load packages and set working directories
+
+library(ggplot2)
+library(stringr)
+library(readr)
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(janitor)
+library(dataCompareR)
+library(grid)
+library(sf)
+library(ggbreak)
+library(glue)
+library(purrr)
+library(openxlsx)
+library(scales)
+library(ggbeeswarm)
+library(shiny)
+library(ggplot2)
+library(DT) 
+library(rsconnect)
+library(scales)
+
+# Load in functions
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/repos/high_streets/functions")
+source("theme_csj.R")
+
+'%!in%' = Negate("%in%")
+pound_format <- label_number(prefix = "£", big.mark = ",", accuracy = 1)
+
+# Set wd and paths
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data")
+import_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/import/"
+export_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/export/"
+datasets_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/datasets/"
+
+# Import
+
+foi_import <- read_excel(str_c(import_path, "foi/FOI Data V3.xlsx")) %>% 
+  clean_names()
+
+counties_shp_import <- st_read(str_c(import_path, "maps/counties/CTYUA_DEC_2023_UK_BFC.shp")) %>% 
+  clean_names()
+
+county_population <- readRDS(str_c(datasets_path, "county_populations.rds"))
+
+# Build 
+
+foi_build <- foi_import %>% 
+  filter(is.na(not_available)) %>% 
+  select(county_name, shops_seized = number_of_shops_that_had_goods_seized) %>% 
+  left_join(county_population, by = c("county_name" = "ctyua24nm")) %>% 
+  mutate(seizure_rate = shops_seized / (county_population/10000)) %>% 
+  arrange(desc(seizure_rate)) %>% 
+  mutate(seizure_rate_rank = row_number(),
+         seizure_rate_standard = (seizure_rate - mean(seizure_rate, na.rm = T))/sd(seizure_rate, na.rm = T))
+
+write.xlsx(foi_build, str_c(export_path, "04_la_index/foi_rankings.xlsx"))
+
+
+# Map
+
+foi_build_shp <- foi_build %>% 
+  left_join(counties_shp_import, by = c("county_name" = "ctyua23nm"))
+
+county_foi_map <- ggplot(foi_build_shp) +
+  geom_sf(aes(geometry = geometry, fill = shops_seized),
+          colour = "white") +
+  scale_fill_steps(
+    low = "#F8F8F8",
+    high = "#8f1f3a",
+    name = "Number of shops\nwith goods seized",
+    limits = c(0, 225),
+    breaks = seq(0, 225, 25)) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),   
+    axis.ticks = element_blank(),  
+    panel.grid = element_blank(),  
+    plot.title = element_text(margin = margin(b = 1)),
+    legend.title = element_text(margin = margin(b = 10)),
+    plot.margin = margin(1,1,1,1))
+
+county_foi_map
