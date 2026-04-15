@@ -1,0 +1,132 @@
+# Clear global environment
+
+rm(list = ls())
+
+# Load packages and set working directories
+
+library(ggplot2)
+library(stringr)
+library(readr)
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(janitor)
+library(dataCompareR)
+library(grid)
+library(sf)
+library(ggbreak)
+library(glue)
+library(purrr)
+library(openxlsx)
+library(scales)
+library(ggbeeswarm)
+library(shiny)
+library(ggplot2)
+library(DT) 
+library(rsconnect)
+library(scales)
+
+# Load in functions
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/repos/high_streets/functions")
+source("theme_csj.R")
+
+'%!in%' = Negate("%in%")
+pound_format <- label_number(prefix = "£", big.mark = ",", accuracy = 1)
+
+# Set wd and paths
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data")
+import_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/import/"
+export_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/export/"
+datasets_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/datasets/"
+
+# Import and build
+
+lsoa_la_crosswalk <- read_csv(str_c(import_path, "maps/LSOA to LA Crosswalk.csv")) %>% 
+  clean_names()
+
+la_to_county_crosswalk <- read_csv(str_c(import_path, "maps/LA to County Crosswalk.csv")) %>% 
+  clean_names() %>% 
+  mutate(lad24cd = case_when(lad24nm == "Sheffield" ~ "E08000039",
+                             lad24nm == "Barnsley" ~ "E08000038",
+                             T ~ lad24cd))
+
+lsoa_to_county <- lsoa_la_crosswalk %>% 
+  select(lsoa21cd, lad25cd, lad25nm) %>% 
+  left_join(la_to_county_crosswalk, by = c("lad25cd" = "lad24cd"))
+
+counties_shp_import <- st_read(str_c(import_path, "maps/counties/CTYUA_DEC_2023_UK_BFC.shp")) %>% 
+  clean_names()
+
+county_population <- readRDS(str_c(datasets_path, "county_populations.rds"))
+
+crimes_import <- readRDS(str_c(datasets_path, "e_and_w_street_crimes_import.rds")) 
+
+#Build
+
+crimes_build <- crimes_import %>% 
+  left_join(lsoa_to_county, by = c("lsoa_code" = "lsoa21cd")) %>% 
+  filter(!is.na(lsoa_code), 
+         crime_type %in% c("Public order", "Shoplifting", "Anti-social behaviour",
+                           "Bicycle theft", "Theft from the person", "Criminal damage and arson")) %>% 
+  group_by(ctyua24cd, ctyua24nm) %>% 
+  summarise(total_crime = n()) %>% 
+  ungroup() %>% 
+  left_join(county_population, by = "ctyua24cd") %>% 
+  mutate(crime_rate = total_crime / (county_population/10000)) %>% 
+  filter(!(total_crime < 20 & str_sub(ctyua24cd, 1, 1) == "E"))  %>% # Removes the Manchester local authorities
+  arrange(desc(crime_rate)) %>% 
+  mutate(crime_rate_rank = row_number(),
+         crime_rate_standard = (crime_rate - mean(crime_rate))/sd(crime_rate))
+
+write.xlsx(crimes_build, str_c(export_path, "04_la_index/crime_rate_rankings.xlsx"))
+
+# Map
+
+crimes_shp <- crimes_build %>% 
+  left_join(counties_shp_import, by = c("ctyua24cd" = "ctyua23cd"))
+
+county_crimes_map <- ggplot(crimes_shp) +
+  geom_sf(aes(geometry = geometry, fill = crime_rate),
+          colour = "white") +
+  scale_fill_steps(
+    low = "#F8F8F8",
+    high = "#8f1f3a",
+    name = "Crimes per 10,000\npopulation",
+    limits = c(0, 1200),
+    breaks = seq(0, 1200, 200),
+    label = label_comma()) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),   
+    axis.ticks = element_blank(),  
+    panel.grid = element_blank(),  
+    plot.title = element_text(margin = margin(b = 1)),
+    legend.title = element_text(margin = margin(b = 10)),
+    plot.margin = margin(1,1,1,1))
+
+county_crimes_map
+
+ggsave(str_c(export_path, "02_maps_by_crime_type/04_all_selected_crimes.png"),
+       plot = county_crimes_map)
+
+# Summary stats
+
+crime_rate_su <- crimes_build %>% 
+  summarise(min = min(crime_rate),
+            q25 = quantile(crime_rate, 0.25),
+            median = median(crime_rate),
+            q75 = quantile(crime_rate, 0.75),
+            max = max(crime_rate))
+
+write.xlsx(crime_rate_su, str_c(export_path, "02_maps_by_crime_type/02_crime_rate_summary_stats.xlsx"))
+
+top_and_bottom_5 <- crimes_build %>% 
+  arrange(desc(crime_rate)) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank <= 5 | rank >= max(rank) - 5) %>% 
+  select(local_authority, total_crime, crime_rate, rank)
+
+write.xlsx(top_and_bottom_5, str_c(export_path, "02_maps_by_crime_type/03_top_and_bottom_las.xlsx"))
+
