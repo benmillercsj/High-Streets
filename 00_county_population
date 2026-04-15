@@ -1,0 +1,65 @@
+# Clear global environment
+
+rm(list = ls())
+
+# Load packages and set working directories
+
+library(ggplot2)
+library(stringr)
+library(readr)
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(janitor)
+library(dataCompareR)
+library(grid)
+library(sf)
+library(ggbreak)
+library(glue)
+library(purrr)
+library(openxlsx)
+library(scales)
+library(ggbeeswarm)
+library(shiny)
+library(ggplot2)
+library(DT) 
+library(rsconnect)
+library(scales)
+
+# Load in functions
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/repos/high_streets/functions")
+source("theme_csj.R")
+
+'%!in%' = Negate("%in%")
+pound_format <- label_number(prefix = "£", big.mark = ",", accuracy = 1)
+
+# Set wd and paths
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data")
+import_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/import/"
+export_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/export/"
+datasets_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/datasets/"
+
+# Import and build
+
+la_to_county_crosswalk <- read_csv(str_c(import_path, "maps/LA to County Crosswalk.csv")) %>% 
+  clean_names() %>% 
+  mutate(lad24cd = case_when(lad24nm == "Sheffield" ~ "E08000039",
+                             lad24nm == "Barnsley" ~ "E08000038",
+                             T ~ lad24cd))
+
+population_import <- read_excel(str_c(import_path, "nomis/Population estimates by local authority, 2024.xlsx"), skip = 6) %>%
+  clean_names() %>% 
+  rename(local_authority = 1, la_code = 2, population_2024 = 3) %>% 
+  mutate(la_code = case_when(local_authority == "Barnsley" ~ "E08000038",
+                             local_authority == "Sheffield" ~ "E08000039",
+                             T ~ la_code))
+
+county_population <- population_import %>% 
+  left_join(la_to_county_crosswalk, by = c("la_code" = "lad24cd")) %>% 
+  group_by(ctyua24cd, ctyua24nm) %>% 
+  summarise(county_population = sum(population_2024)) %>% 
+  ungroup()
+
+saveRDS(county_population, str_c(datasets_path, "county_populations.rds"))
