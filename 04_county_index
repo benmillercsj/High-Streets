@@ -1,0 +1,74 @@
+# Clear global environment
+
+rm(list = ls())
+
+# Load packages and set working directories
+
+library(ggplot2)
+library(stringr)
+library(readr)
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(janitor)
+library(dataCompareR)
+library(grid)
+library(sf)
+library(ggbreak)
+library(glue)
+library(purrr)
+library(openxlsx)
+library(scales)
+library(ggbeeswarm)
+library(shiny)
+library(ggplot2)
+library(DT) 
+library(rsconnect)
+library(scales)
+
+# Load in functions
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/repos/high_streets/functions")
+source("theme_csj.R")
+
+'%!in%' = Negate("%in%")
+pound_format <- label_number(prefix = "£", big.mark = ",", accuracy = 1)
+
+# Set wd and paths
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data")
+import_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/import/"
+export_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/export/"
+datasets_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/datasets/"
+
+# Import
+
+vacancy_rates <- read_excel(str_c(export_path, "04_la_index/vacancy_rankings.xlsx")) %>% 
+  clean_names() 
+
+crime_rates <- read_excel(str_c(export_path, "04_la_index/crime_rate_rankings.xlsx")) %>% 
+  clean_names() %>% 
+  select(ctyua24cd, crime_rate, crime_rate_rank, crime_rate_standard)
+
+foi_rankings <- read_excel(str_c(export_path, "04_la_index/foi_rankings.xlsx")) %>% 
+  clean_names() %>% 
+  select(ctyua24cd, seizure_rate, seizure_rate_rank, seizure_rate_standard)
+
+# Build 
+
+combined <- vacancy_rates %>% 
+  left_join(crime_rates) %>% 
+  left_join(foi_rankings) %>% 
+  filter(!is.na(seizure_rate_standard), !is.na(vacancy_rate_standard),!is.na(crime_rate_standard)) %>% 
+  mutate(index_value = (seizure_rate_standard + vacancy_rate_standard + crime_rate_standard)/3)
+
+# Map
+
+counties_shp_import <- st_read(str_c(import_path, "maps/counties/CTYUA_DEC_2023_UK_BFC.shp")) %>% 
+  clean_names()
+
+index_shp <- counties_shp_import %>% 
+  left_join(combined, by = c("ctyua23cd" = "ctyua24cd")) %>% 
+  filter(str_sub(ctyua23cd, 1, 1) != "S")
+
+index_map 
