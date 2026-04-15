@@ -1,0 +1,93 @@
+# Clear global environment
+
+rm(list = ls())
+
+# Load packages and set working directories
+
+library(ggplot2)
+library(stringr)
+library(readr)
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(janitor)
+library(dataCompareR)
+library(grid)
+library(sf)
+library(ggbreak)
+library(glue)
+library(purrr)
+library(openxlsx)
+library(scales)
+library(ggbeeswarm)
+library(shiny)
+library(ggplot2)
+library(DT) 
+library(rsconnect)
+library(scales)
+
+# Load in functions
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/repos/high_streets/functions")
+source("theme_csj.R")
+
+'%!in%' = Negate("%in%")
+pound_format <- label_number(prefix = "£", big.mark = ",", accuracy = 1)
+
+# Set wd and paths
+
+setwd("C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data")
+import_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/import/"
+export_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/export/"
+datasets_path <- "C:/Users/BenMiller/OneDrive - Centre for Social Justice/Documents/R/high_streets/data/datasets/"
+
+# Import
+
+vacancy_rate_import <- read_csv(str_c(import_path, "gds/LDC_Safeguarded_LAD2024_2025.csv")) %>% 
+  clean_names()
+
+la_to_county_crosswalk <- read_csv(str_c(import_path, "maps/LA to County Crosswalk.csv")) %>% 
+  clean_names() %>% 
+  select(lad24cd, ctyua24cd, ctyua24nm)
+
+counties_shp_import <- st_read(str_c(import_path, "maps/counties/CTYUA_DEC_2023_UK_BFC.shp")) %>% 
+  clean_names()
+
+# Build
+
+vacancy_build <- vacancy_rate_import %>% 
+  left_join(la_to_county_crosswalk, by = "lad24cd") %>% 
+  group_by(ctyua24cd, ctyua24nm) %>% 
+  summarise(vacancy_rate = sum(vacant)/sum(total)) %>% 
+  ungroup() %>% 
+  arrange(desc(vacancy_rate)) %>% 
+  mutate(vacancy_rate_rank = row_number(),
+         vacancy_rate_standard = (vacancy_rate - mean(vacancy_rate, na.rm = T))/sd(vacancy_rate, na.rm = T))
+
+write.xlsx(vacancy_build, str_c(export_path, "04_la_index/vacancy_rankings.xlsx"))
+
+
+# Map
+
+vacancy_shp <- vacancy_build %>% 
+  left_join(counties_shp_import, by = c("ctyua24nm" = "ctyua23nm"))
+
+county_vacancy_map <- ggplot(vacancy_shp) +
+  geom_sf(aes(geometry = geometry, fill = vacancy_rate),
+          colour = "white") +
+  scale_fill_steps(
+    low = "#F8F8F8",
+    high = "#8f1f3a",
+    name = "Vacancy rate",
+    limits = c(0, 0.25),
+    breaks = seq(0, 0.25, 0.05)) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),   
+    axis.ticks = element_blank(),  
+    panel.grid = element_blank(),  
+    plot.title = element_text(margin = margin(b = 1)),
+    legend.title = element_text(margin = margin(b = 10)),
+    plot.margin = margin(1,1,1,1))
+
+county_vacancy_map
